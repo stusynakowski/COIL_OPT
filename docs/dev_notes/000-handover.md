@@ -1,5 +1,9 @@
 # Developer Handover Notes
 
+## we are making extensions to the following repo
+https://github.com/hiddenSymmetries/simsopt.git
+
+
 ## Purpose
 Context for developers (human or agent) joining after specs are defined.
 
