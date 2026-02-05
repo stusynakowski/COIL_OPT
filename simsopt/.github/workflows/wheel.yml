@@ -1,0 +1,81 @@
+name: Wheel Builder
+
+# This file is based on https://github.com/pypa/cibuildwheel/blob/main/examples/github-deploy.yml
+
+on: [push, pull_request]
+
+concurrency:
+  # Use github.run_id on main branch
+  # Use github.event.pull_request.number on pull requests, so it's unique per pull request
+  # Use github.ref on other branches, so it's unique per branch
+  group: ${{ github.workflow }}-${{ github.ref == github.ref_protected && github.run_id || github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build_wheels:
+    name: Build wheels on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, ubuntu-24.04-arm, macos-15, macos-15-intel]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build wheels
+        uses: pypa/cibuildwheel@v2.22.0
+        # To supply options, put them in 'env'
+        env:
+          # Only build for python 3.{9,10,11,12}
+          # CIBW_BUILD : cp39-* cp310-* cp311-* cp312-*
+          #   # Supports only x86_64 arch for linux
+          #   CIBW_ARCHS_LINUX: x86_64
+          #   CIBW_ARCHS_MACOS: "x86_64 arm64"
+          #   # Skip python 3.8 and PyPy builds since there is are errors when building the
+          #   # wheel in those cases:
+          CIBW_SKIP: cp38-* cp39-* pp* *-manylinux_i686 *-musllinux*
+          #   CIBW_DEPENDENCY_VERSIONS: latest
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cibw-wheels-${{ matrix.os }}-${{ strategy.job-index }}
+          path: ./wheelhouse/*.whl
+
+  build_sdist:
+    name: Build source distribution
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build sdist
+        run: pipx run build --sdist
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cibw-sdist
+          path: dist/*.tar.gz
+
+  upload_pypi:
+    needs: [build_wheels, build_sdist]
+    runs-on: ubuntu-24.04
+    environment: pypi
+    permissions:
+      id-token: write
+    # if: github.event_name == 'release' && github.event.action == 'published'
+    # or, alternatively, upload to PyPI on every tag starting with 'v' (remove on: release above to use this)
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          # unpacks all CIBW artifacts into dist/
+          pattern: cibw-*
+          path: dist
+          merge-multiple: true
+
+      - uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          user: __token__
+          password: ${{ secrets.PYPI_TOKEN }}
+          #password: ${{ secrets.TEST_PYPI_TOKEN }}
+          #repository_url: https://test.pypi.org/legacy/
