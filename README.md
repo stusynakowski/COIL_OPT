@@ -1,242 +1,149 @@
-Agent-Guardrailed Development Framework (Python + pytest)
+# COIL_OPT — Stellarator Coil Optimization with SIMSOPT
 
-This repository defines a phase-based development workflow designed to work with
-AI coding agents (Copilot, Claude Code, Cursor, etc.) while remaining agent-agnostic.
+A collection of examples and tools for optimizing electromagnetic coil designs for stellarator fusion devices, built on top of the [SIMSOPT](https://github.com/hiddenSymmetries/simsopt) framework.
 
-The goal of this framework is to:
-- reduce repeated context
-- enforce clear development stages
-- prevent agents from editing the wrong files
-- produce persistent, auditable artifacts
-- make progress verifiable via tests and CI
+## Overview
 
-This is not application documentation.
-This file describes how to use the development framework itself.
+Stellarators confine plasma using carefully shaped external magnetic coils rather than relying on plasma current (as tokamaks do). Designing these coils is a complex geometric optimization problem: the coils must produce a magnetic field that closely matches a target equilibrium on the plasma boundary while satisfying engineering constraints on length, curvature, and inter-coil spacing.
 
-----------------------------------------------------------------
+**COIL_OPT** extends SIMSOPT's coil optimization capabilities with ready-to-run examples for various stellarator configurations, interactive 3D visualization, and a structured development workflow for adding new use cases.
 
-CORE PRINCIPLES
+## Features
 
-1. Phased development
-   Work proceeds in explicit phases:
-   IDEA -> SPEC -> DEV PLAN -> TESTS -> IMPLEMENTATION
+- **Stage II coil optimization** — find coil shapes that reproduce a target normal magnetic field on a given plasma surface
+- **Stochastic optimization** — account for manufacturing tolerances via systematic and statistical coil perturbations
+- **Multiple stellarator configurations** — examples for QA (quasi-axisymmetric) and W7-X-like geometries
+- **Interactive 3D visualization** — Plotly-based scripts and a Streamlit app for exploring coils and plasma surfaces
+- **VTK output** — coil curves and surfaces exported as `.vtu` / `.vts` for use with ParaView or other tools
 
-   Each phase has a clearly defined purpose and output.
+## Quick Start
 
-2. Hard edit boundaries
-   In each phase, the agent is only allowed to edit specific directories.
-   Violations are blocked locally and in CI using guardrail scripts.
+### Prerequisites
 
-3. Requirements as contracts
-   Specifications define stable requirement IDs (REQ-*).
-   Tests reference those IDs.
-   Code implements those IDs.
-   Nothing is considered complete unless it is traceable.
+- Python ≥ 3.10
+- [SIMSOPT](https://simsopt.readthedocs.io/) and its dependencies (including MPI support)
 
-4. Minimal context by default
-   Agents read a single entry point: docs/context.md.
-   Additional context must be explicitly linked, not assumed.
+### Installation
 
-----------------------------------------------------------------
+```bash
+# Clone the repository
+git clone https://github.com/<your-org>/COIL_OPT.git
+cd COIL_OPT
 
-REPOSITORY STRUCTURE
+# Install in development mode
+pip install -e ".[dev]"
 
-docs/
-  introduction.md   Application overview (what is being built)
-  context.md        Agent entry point, current status, and phase rules
-  spec/             Formal requirements and architecture (REQ IDs live here)
-  dev_plan/         Execution plan and task breakdown
-  dev_notes/        Handover notes and context for developers
-  test_plan/        Mapping from REQ IDs to tests
-  status_update/    Progress dashboards and blockers
-  adr/              Architecture Decision Records (design rationale)
+# Install SIMSOPT (if not already installed)
+pip install simsopt
+```
 
-prompts/
-  Reusable agent prompts for each phase
+### Run an Example
 
-src/
-  Application code (implementation only)
+```bash
+cd basic_examples
 
-tests/
-  pytest tests that reference REQ IDs
+# Example 1 — QA stochastic coil optimization (Landreman & Paul 2021)
+python example_1_case.py
 
-scripts/
-  Guardrails that enforce phase rules
+# Example 2 — W7-X Stage II optimization with virtual casing
+python example_2_case.py
+```
 
-.github/
-  CI configuration and optional agent instructions
+Output files (`.vtu` / `.vts`) are written to `basic_examples/output/`.
 
-----------------------------------------------------------------
+### Visualize Results
 
-DEVELOPMENT PHASES
+```bash
+# Interactive Plotly plot (optimized coils by default)
+python plotting_coils.py
 
-PHASE 1: IDEA
-Purpose:
-  Describe the problem, users, and constraints.
+# Plot initial coils instead
+python plotting_coils.py init
 
-Allowed edits:
-  - docs/introduction.md
-  - docs/context.md
+# Streamlit app with sidebar controls
+streamlit run streamlit_coils.py
+```
 
-Output:
-  - Clear problem statement
-  - Use cases and non-goals
-  - Success criteria
+## Examples
 
-No specs, no tests, no code.
+### Example 1 — Stochastic QA Coil Optimization
 
-----------------
+Solves a FOCUS-like Stage II problem for the quasi-axisymmetric configuration from [arXiv:2108.03711](https://arxiv.org/abs/2108.03711). The objective minimizes the mean squared normal field over stochastically perturbed coils, plus regularization penalties:
 
-PHASE 2: SPEC
-Purpose:
-  Define what must be built (Requirements) and how it will be built (Architecture).
+$$J = \frac{1}{2}\,\mathbb{E}\!\left[\int |B \cdot n|^2 \, ds\right] + \lambda_L \sum \text{CurveLength} + \lambda_d \,\text{MinDist} + \lambda_\kappa \sum \text{Curvature} + \lambda_{\text{msc}} \sum \text{MSC} + \lambda_a \sum \text{ArclengthVar}$$
 
-Allowed edits:
-  - docs/spec/**
-  - docs/adr/**
-  - docs/context.md
+- 4 unique coil shapes per half-field-period (nfp = 2, 16 coils total via symmetry)
+- Fourier order 24 coil representation
+- Gaussian perturbation model with systematic + statistical error components
+- L-BFGS-B optimizer (400 iterations)
 
-Output:
-  - Requirements with stable IDs (REQ-CORE-001, etc.)
-  - Architecture and Data Models
-  - Interfaces and acceptance criteria
+### Example 2 — W7-X Virtual Casing
 
-----------------
+Optimizes coils for a W7-X configuration at 4% average beta. Because the equilibrium is not vacuum, a **virtual casing** calculation provides the target $B_{\text{external}} \cdot n$:
 
-PHASE 3: DEV PLAN
-Purpose:
-  Plan the execution and task breakdown.
+$$J = \frac{1}{2} \int |B_{\text{BiotSavart}} \cdot n - B_{\text{external}} \cdot n|^2 \, ds + \lambda \sum \frac{1}{2}(\text{CurveLength} - L_0)^2$$
 
-Allowed edits:
-  - docs/dev_plan/**
-  - docs/dev_notes/**
-  - docs/context.md
+- 5 unique coil shapes per half-field-period (nfp = 5, 50 coils total)
+- Fourier order 6 coil representation
+- L-BFGS-B optimizer (500 iterations)
 
-Output:
-  - Step-by-step execution plan
-  - Developer handover notes
+## Project Structure
 
-----------------
-
-PHASE 4: TESTS
-Purpose:
-  Define how correctness is measured.
-
-Allowed edits:
-  - tests/**
-  - docs/test_plan/**
-  - docs/context.md
-
-Output:
-  - pytest test cases
-  - Explicit mapping from REQ IDs to TEST IDs
-
-Every requirement must be covered by at least one test.
-
-----------------
-
-PHASE 5: IMPLEMENTATION
-Purpose:
-  Write code until tests pass.
-
-Allowed edits:
-  - src/**
-  - docs/status_update/**
-  - docs/context.md
-
-Output:
-  - Minimal implementation that satisfies specs
-  - Passing test suite
-  - Updated status dashboard
-
-Implementation is iterative but bounded.
-Stop when tests pass or when the iteration limit is reached.
-
-----------------
-
-STATUS PHASE (Anytime)
-Purpose:
-  Update progress and blockers without changing code.
-
-Allowed edits:
-  - docs/status_update/**
-  - docs/context.md
-
-----------------------------------------------------------------
-
-REQUIREMENT ID (REQ ID) CONVENTION
-
-All requirements use the following format:
-
-  REQ-<DOMAIN>-<NUMBER>
-
-Examples:
-  REQ-CORE-001   Core functionality
-  REQ-API-002    Public API behavior
-  REQ-ERR-001    Error handling
-  REQ-PERF-001   Performance constraints
-
-Rules:
-  - IDs are never renumbered or reused
-  - Deprecated requirements remain documented
-  - Tests must reference REQ IDs explicitly
-  - Code should reference REQ IDs in docstrings or comments
-
-----------------------------------------------------------------
-
-GUARDRAIL ENFORCEMENT
-
-Local enforcement:
-  Run the guardrails before committing:
-
-    PHASE=spec ./scripts/verify_phase.sh
-
-  If files outside the allowed directories were modified, the command fails.
-
-CI enforcement:
-  Continuous integration runs the test suite automatically.
-  Phase guardrails can optionally be enforced in CI using branch naming rules.
-
-Agents cannot silently violate the workflow.
-
-----------------------------------------------------------------
-
-USING THIS FRAMEWORK WITH AI AGENTS
-
-1. Set the current phase in docs/context.md
-2. Choose the corresponding prompt from the prompts/ directory
-3. Start the agent session with:
-   - Read docs/context.md
-   - Only edit files allowed for the current phase
-4. After changes, run:
-   - PHASE=<phase> ./scripts/verify_phase.sh
-   - pytest
-
-If guardrails or tests fail, the work is not accepted.
-
-----------------------------------------------------------------
-
-WHAT THIS FRAMEWORK DOES NOT DO
-
-- It does not auto-generate specs or tests for you
-- It does not assume a specific AI agent or editor
-- It does not optimize for speed over correctness
-- It does not remove the developer from decision-making
-
-This framework exists to amplify developer judgment,
-not replace it.
-
-----------------------------------------------------------------
-
-EXPECTED MINDSET
-
-Treat specifications as contracts.
-Treat tests as law.
-Treat agents as powerful but untrusted collaborators.
-
-If something feels ambiguous, fix the specification,
-not the prompt.
-
-----------------------------------------------------------------
-
-END OF DOCUMENT
+```
+COIL_OPT/
+├── basic_examples/           # Runnable optimization & visualization scripts
+│   ├── example_1_case.py     # Stochastic QA coil optimization
+│   ├── example_2_case.py     # W7-X virtual casing optimization
+│   ├── plotting_coils.py     # Plotly 3D coil viewer (pyvista backend)
+│   ├── plotting_example2.py  # Plotly 3D viewer (meshio backend)
+│   ├── streamlit_coils.py    # Interactive Streamlit visualization app
+│   └── output/               # Generated VTU/VTS files
+├── data/test_files/          # VMEC input files & equilibria for examples
+├── docs/                     # Project documentation & development context
+├── tests/                    # Test suite
+├── scripts/                  # Development guardrail scripts
+├── prompts/                  # Reusable agent prompts for phased development
+├── pyproject.toml            # Build configuration
+└── README.md
+```
+
+## Key Dependencies
+
+| Package | Purpose |
+|---------|---------|
+| [simsopt](https://simsopt.readthedocs.io/) | Stellarator optimization framework (Biot-Savart, coil geometry, objectives) |
+| [scipy](https://scipy.org/) | L-BFGS-B and other optimizers |
+| [numpy](https://numpy.org/) | Array operations |
+| [plotly](https://plotly.com/python/) | Interactive 3D visualization |
+| [pyvista](https://docs.pyvista.org/) | VTK file I/O and mesh processing |
+| [streamlit](https://streamlit.io/) | Web-based interactive dashboard |
+
+## Development Workflow
+
+This repository uses a **phased development framework** for structured, agent-assisted development:
+
+1. **IDEA** — problem statement and use cases
+2. **SPEC** — formal requirements with traceable IDs (`REQ-*`)
+3. **DEV PLAN** — task breakdown and execution plan
+4. **TESTS** — pytest tests mapped to requirements
+5. **IMPLEMENTATION** — code that satisfies the specs
+
+See [AGENT_README.md](AGENT_README.md) for full framework documentation, and [docs/context.md](docs/context.md) for the current project status.
+
+## Contributing
+
+1. Fork the repository
+2. Create a feature branch (`git checkout -b feature/new-configuration`)
+3. Follow the phased workflow described in [AGENT_README.md](AGENT_README.md)
+4. Ensure tests pass: `pytest -q`
+5. Open a pull request
+
+## License
+
+See the repository license file for details.
+
+## References
+
+- Landreman, M. & Paul, E. (2021). *Magnetic fields with precise quasisymmetry for plasma confinement.* [arXiv:2108.03711](https://arxiv.org/abs/2108.03711)
+- [SIMSOPT Documentation](https://simsopt.readthedocs.io/)
+- [SIMSOPT GitHub Repository](https://github.com/hiddenSymmetries/simsopt)
