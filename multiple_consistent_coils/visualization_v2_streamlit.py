@@ -19,7 +19,37 @@ from pathlib import Path
 st.set_page_config(page_title="Coil Viewer", layout="wide")
 st.title("🌀 Stellarator Coil Viewer")
 
-OUT_DIR = Path(__file__).parent / "output_pytorch_rotated"
+# ---------------------------------------------------------------------------
+# Discover available simulation directories
+# ---------------------------------------------------------------------------
+BASE_DIR = Path(__file__).parent
+SWEEP_DIR = BASE_DIR / "sweep_output"
+SINGLE_DIR = BASE_DIR / "output_pytorch_rotated"
+
+
+def discover_simulations() -> dict[str, Path]:
+    """Return {display_name: path} for every directory containing curve VTU files."""
+    sims: dict[str, Path] = {}
+    # Single default run
+    if SINGLE_DIR.exists() and list(SINGLE_DIR.glob("curves_*.vtu")):
+        sims["default (output_pytorch_rotated)"] = SINGLE_DIR
+    # Sweep subdirectories
+    if SWEEP_DIR.exists():
+        for d in sorted(SWEEP_DIR.iterdir()):
+            if d.is_dir() and list(d.glob("curves_*.vtu")):
+                # Parse ncoils/nuniq from dir name like "ncoils4_nuniq2"
+                parts = d.name.split("_")
+                nc = parts[0].replace("ncoils", "") if len(parts) >= 1 else "?"
+                nq = parts[1].replace("nuniq", "") if len(parts) >= 2 else "?"
+                label = f"ncoils={nc}, n_unique={nq}"
+                sims[label] = d
+    return sims
+
+
+available_sims = discover_simulations()
+if not available_sims:
+    st.error("No simulation output found. Run `run_sweep.py` or the notebook first.")
+    st.stop()
 
 COLORS = [
     "#1f77b4", "#ff7f0e", "#2ca02c", "#d62728",
@@ -94,14 +124,38 @@ def count_perturbed(out_dir: Path, stage: str) -> int:
 # ---------------------------------------------------------------------------
 # Sidebar controls
 # ---------------------------------------------------------------------------
-stages = available_stages(OUT_DIR)
-if not stages:
-    st.error(f"No curve files found in `{OUT_DIR}`. Run `example_1_case.py` first.")
-    st.stop()
-
 with st.sidebar:
     st.header("Settings")
 
+    # ---- Simulation selector ----
+    sim_labels = list(available_sims.keys())
+    selected_sim = st.selectbox("Simulation", sim_labels, index=0)
+    OUT_DIR = available_sims[selected_sim]
+
+    # Show summary.json metrics if available
+    summary_file = OUT_DIR / "summary.json"
+    run_summary = {}
+    if summary_file.exists():
+        import json
+        with open(summary_file) as _f:
+            run_summary = json.load(_f)
+        st.caption(
+            f"max|B·n| init: {run_summary.get('init_max_Bn', 0):.4e}  \n"
+            f"max|B·n| final: {run_summary.get('final_max_Bn', 0):.4e}  \n"
+            f"loss: {run_summary.get('final_loss', 0):.4e}  \n"
+            f"DOFs: {run_summary.get('n_dofs', '?')}  \n"
+            f"iters: {run_summary.get('n_iters', '?')}  \n"
+            f"time: {run_summary.get('elapsed_s', '?')}s"
+        )
+
+    st.divider()
+
+stages = available_stages(OUT_DIR)
+if not stages:
+    st.error(f"No curve files found in `{OUT_DIR}`.")
+    st.stop()
+
+with st.sidebar:
     stage = st.selectbox("Stage", stages, index=stages.index("opt") if "opt" in stages else 0)
 
     show_surface = st.checkbox("Show plasma surface", value=True)
@@ -124,10 +178,14 @@ with st.sidebar:
 
     st.divider()
     st.subheader("Unique Shape Groups")
+    # Auto-detect n_unique_shapes from summary.json if available
+    _default_nuq = 1
+    if summary_file.exists():
+        _default_nuq = run_summary.get("n_unique_shapes", 1)
     n_unique_shapes = st.number_input(
         "Number of unique coil shapes (Q)",
-        min_value=1, max_value=32, value=1, step=1,
-        help="Must match n_unique_shapes used during optimization. "
+        min_value=1, max_value=32, value=_default_nuq, step=1,
+        help="Auto-detected from simulation summary. "
              "Coils are assigned to shape groups cyclically: coil i → group (i mod Q).",
     )
     color_by_group = st.checkbox("Color coils by shape group", value=True)
