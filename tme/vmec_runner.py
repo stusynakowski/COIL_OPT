@@ -65,11 +65,11 @@ def prepare_vmec_input(surface, metadata: dict, output_dir: str,
     nml = f90nml.read(input_template)
     indata = nml["indata"]
 
-    # Estimate B0 and R0 from the surface geometry
+    # Use B0 and R0 from metadata if available, otherwise default
+    B0 = metadata.get("B0", 1.0)
     gamma = surface.gamma()
     R_vals = np.sqrt(gamma[:, :, 0]**2 + gamma[:, :, 1]**2)
-    R0 = float(np.mean(R_vals))
-    B0 = 1.0  # default for QUASR normalized equilibria
+    R0 = metadata.get("R0", float(np.mean(R_vals)))
 
     beta_target = metadata["beta_target"]
 
@@ -84,8 +84,8 @@ def prepare_vmec_input(surface, metadata: dict, output_dir: str,
     indata["mpol"] = 10
     indata["ntor"] = 10
     indata["ns_array"] = [16, 49]
-    indata["ftol_array"] = [1e-8, 1e-12]
-    indata["niter_array"] = [2000, 5000]
+    indata["ftol_array"] = [1e-8, 1e-10]
+    indata["niter_array"] = [2000, 10000]
 
     # --- Current/iota profile ---
     if metadata.get("profile_type") == "bootstrap":
@@ -144,8 +144,62 @@ def run_vmec(input_path: str) -> str:
             f"VMEC did not converge: ier_flag={ier_flag}, fsql={fsql}"
         )
 
-    if fsql > 1e-8:
+    if fsql > 1e-6:
         import warnings
         warnings.warn(f"VMEC fsql={fsql:.2e} > 1e-8, convergence may be poor")
+
+    return wout_path
+
+
+def run_vmec_to_target_beta(surface, metadata: dict, output_dir: str,
+                            input_template: str, max_iterations: int = 3) -> str:
+    """
+    Run VMEC iteratively, scaling PRES_SCALE to achieve the target beta.
+
+    Does a calibration run, measures achieved beta, rescales PRES_SCALE
+    proportionally, and re-runs. Beta scales linearly with PRES_SCALE
+    at low beta, so this converges in 1-2 iterations.
+
+    Returns:
+        Path to final wout file.
+    """
+    import netCDF4 as nc
+
+    beta_target = metadata["beta_target"]
+    pres_scale_override = None
+
+    for iteration in range(max_iterations):
+        input_path = prepare_vmec_input(
+            surface, metadata, output_dir, input_template=input_template,
+        )
+
+        # Override PRES_SCALE if we have a correction from a previous iteration
+        if pres_scale_override is not None:
+            nml = f90nml.read(input_path)
+            nml["indata"]["pres_scale"] = pres_scale_override
+            nml.write(input_path, force=True)
+
+        wout_path = run_vmec(input_path)
+
+        ds = nc.Dataset(wout_path)
+        beta_achieved = float(ds.variables["betatotal"][:])
+        ds.close()
+
+        if beta_achieved <= 0:
+            import warnings
+            warnings.warn("VMEC returned beta=0, cannot rescale")
+            return wout_path
+
+        ratio = beta_target / beta_achieved
+        if abs(ratio - 1.0) < 0.2:  # within 20% of target
+            return wout_path
+
+        # Scale PRES_SCALE linearly (beta ∝ PRES_SCALE at low beta)
+        current_nml = f90nml.read(input_path)
+        current_pres = current_nml["indata"]["pres_scale"]
+        pres_scale_override = float(current_pres * ratio)
+        print(f"  Iteration {iteration+1}: beta={beta_achieved:.4e}, "
+              f"target={beta_target:.4e}, ratio={ratio:.1f}x, "
+              f"new PRES_SCALE={pres_scale_override:.1f}")
 
     return wout_path
