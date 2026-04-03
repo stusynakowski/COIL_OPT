@@ -1,0 +1,11 @@
+{
+  "num_trades": 388347,
+  "total_volume": 18800395,
+  "num_tickers": 1992,
+  "num_markets": 2946,
+  "num_events": 491,
+  "date_range": [
+    "2025-01-01",
+    "2025-11-30"
+  ]
+}

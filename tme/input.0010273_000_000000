@@ -1,5 +1,5 @@
 &INDATA
-! This file created by simsopt on March 21 2026, 08:00:00
+! This file created by simsopt on April 02 2026, 19:19:53
 
 ! ---- Geometric parameters ----
 NFP = 2
@@ -20,7 +20,7 @@ PHIEDGE = 1.0
 ! ---- Pressure profile specification ----
 PMASS_TYPE = "power_series"
 AM = 1.0 -2.0 1.0 
-PRES_SCALE = 637292.5154392103
+PRES_SCALE = 11047.939648858935
 
 ! ---- Profile specification of iota or current ----
 NCURR = 1

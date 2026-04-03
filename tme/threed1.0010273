@@ -1,7 +1,7 @@
  THIS IS PARVMEC (PARALLEL VMEC), VERSION 9.0
  Lambda: Full Radial Mesh. L-Force: hybrid full/half.
 
- COMPUTER: x86_64-conda-linux-gnu   OS:    RELEASE: x86_64  DATE = Mar 21,2026  TIME = 08:00:00
+ COMPUTER: x86_64-conda-linux-gnu   OS:    RELEASE: x86_64  DATE = Apr 02,2026  TIME = 19:19:53
  SHOT ID.: 0010273  SEQ. NO.:   0
  TIME SLICE =    0. ms
 
@@ -27,7 +27,7 @@
   precon_type   prec2d_threshold
   NONE                  1.00E-30
 
- Pressure profile factor:  6.3729E+05 (multiplier for pressure)
+ Pressure profile factor:  1.1048E+04 (multiplier for pressure)
  MASS PROFILE COEFFICIENTS - newton/m**2 (EXPANSION IN NORMALIZED RADIUS):
  PMASS parameterization type is 'power_series'
  -----------------------------------

@@ -1,0 +1,27 @@
+{
+  "calibration": {
+    "mean_deviation": 1.0450885355744806,
+    "t_stat": -2.809290015564242e-16,
+    "p_value": 0.9999999999999998,
+    "significant_at_05": false
+  },
+  "yes_no_asymmetry": {
+    "yes_mean_return": -0.015698126565298745,
+    "no_mean_return": -0.005827981401183555,
+    "u_stat": 42347736412.0,
+    "p_value": 0.0,
+    "significant_at_05": true
+  },
+  "volume_clustering": {
+    "chi2_stat": 2679681.6613285467,
+    "p_value": 0.0,
+    "significant_at_05": true,
+    "peak_hour": 23,
+    "trough_hour": 3
+  },
+  "price_bucket_return": {
+    "h_stat": 47515.386291736715,
+    "p_value": 0.0,
+    "significant_at_05": true
+  }
+}
